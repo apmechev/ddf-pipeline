@@ -6,6 +6,8 @@ import os.path
 from auxcodes import run,find_imagenoise,warn,die
 from options import options
 from shutil import copyfile,rmtree
+import pyfits
+import numpy as np
 
 def logfilename(s):
     if o['logging'] is not None:
@@ -20,6 +22,25 @@ DDF2 changes to ddf_image:
 3) re-use cache second time round
 4) Force resolution to something sensible.
 """
+
+
+def update_cleanmask(inmaskname,innoisemapname,outmaskname,cutthreshold):
+    if o['restart'] and os.path.isfile(outmaskname):
+        warn('File '+outmaskname+' already exists, skipping mask editing step')
+	return False
+    image1 = pyfits.open(inmaskname)
+    dataarray1 = image1[0].data
+    image3 = pyfits.open(innoisemapname)
+    dataarray3 = image3[0].data
+    newmaskdata = dataarray1
+    newmaskdata = newmaskdata.clip(0)
+    newmaskdata[np.where(dataarray3 > cutthreshold)] = 0
+    newmaskdata[np.where(np.isnan(dataarray3))] = 0    
+    image3 = pyfits.open(inmaskname)
+    image3[0].data = newmaskdata
+    image3.writeto(outmaskname)
+    return True
+
 
 def ddf_image(imagename,mslist,cleanmask=None,cleanmode='MSMF',ddsols=None,applysols=None,threshold=None,majorcycles=3,previous_image=None,use_dicomodel=False,robust=0,beamsize=None,reuse_psf=False,reuse_dirty=False,verbose=False,saveimages=None,imsize=None,cellsize=None,uvrange=None,colname='CORRECTED_DATA',peakfactor=0.1):
     # saveimages lists _additional_ images to save
@@ -77,7 +98,7 @@ def ddf_image(imagename,mslist,cleanmask=None,cleanmode='MSMF',ddsols=None,apply
 
 def make_mask(imagename,thresh,verbose=False):
     fname=imagename+'.mask.fits'
-    runcommand = "MakeMask.py --RestoredIm=%s --Th=%s --Box=50,2"%(imagename,thresh)
+    runcommand = "MakeMask.py --RestoredIm=%s --Th=%s --Box=50,2 --OutNameNoiseMap=%s.noisemap"%(imagename,thresh,imagename)
     if o['restart'] and os.path.isfile(fname):
         warn('File '+fname+' already exists, skipping MakeMask step')
         if verbose:
@@ -93,7 +114,7 @@ def killms_data(imagename,mslist,outsols,clusterfile,colname='CORRECTED_DATA'):
         if o['restart'] and os.path.isfile(checkname):
             warn('Solutions file '+checkname+' already exists, not running killMS step')
         else:
-            runcommand = "killMS.py --MSName %s --SolverType KAFCA --PolMode Scalar --BaseImageName %s --dt %i --Weighting Natural --BeamMode LOFAR --LOFARBeamMode=A --NIterKF 6 --CovQ 0.1 --LambdaKF=%f --NCPU %i --OutSolsName %s --NChanSols %i --InCol %s"%(f,imagename,o['dt'], o['LambdaKF'], o['NCPU_killms'], outsols, o['NChanSols'],colname)
+            runcommand = "killMS.py --MSName %s --SolverType KAFCA --PolMode Scalar --BaseImageName %s --dt %i --Weighting Natural --BeamMode LOFAR --LOFARBeamMode=A --NIterKF 6 --CovQ 0.1 --LambdaKF=%f --NCPU %i --OutSolsName %s --NChanSols %i --InCol %s --DoBar 0"%(f,imagename,o['dt'], o['LambdaKF'], o['NCPU_killms'], outsols, o['NChanSols'],colname)
             if clusterfile != '':
                 runcommand+=' --NodesFile '+clusterfile
             run(runcommand,dryrun=o['dryrun'],log=logfilename('KillMS-'+f+'_'+outsols+'.log'),quiet=o['quiet'])
@@ -137,10 +158,42 @@ if __name__=='__main__':
             clearcache(o['full_mslist'])
 
     # Image full bandwidth to create a model
-    ddf_image('image_dirin_MSMF',o['mslist'],cleanmode='MSMF',threshold=50e-3,majorcycles=3,robust=o['robust'])
-    make_mask('image_dirin_MSMF.app.restored.fits',o['ga'])
-    #imagenoise = find_imagenoise('image_dirin_MSMF.restored.fits',1E-3)
-    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],previous_image='image_dirin_MSMF',reuse_psf=True,reuse_dirty=True,peakfactor=0.05)
+    threshold1 = 20e-3
+    ddf_image('image_dirin_MSMF',o['mslist'],cleanmode='MSMF',threshold=threshold1,majorcycles=10,robust=o['robust'])
+    make_mask('image_dirin_MSMF.app.restored.fits',o['msmf'])
+
+    f = pyfits.open('image_dirin_MSMF.app.restored.fits')
+    noisearray = f[0].data.flatten()
+    maxpixel = np.max(noisearray)
+    noisearray = np.random.permutation(noisearray)[:10000]
+    noisepix = np.array(filter(lambda x: abs(x) > 10E-8,noisearray))
+    minthreshold = np.std(noisepix)
+    
+    f = pyfits.open('image_dirin_MSMF.app.restored.fits.noisemap.fits')
+    dataarray = f[0].data.flatten()
+    dataarray = np.random.permutation(dataarray)[:10000]
+    #dataarray = np.array(filter(lambda x: abs(x) > minthreshold,dataarray))
+    dataarray = np.random.permutation(dataarray)[:10000]
+    dataarray.sort()
+
+    threshold2 = dataarray[int(len(dataarray)*0.99)]
+    threshold3 = dataarray[int(len(dataarray)*0.85)]
+    threshold4 = dataarray[int(len(dataarray)*0.60)]
+    print 'Thresholds', threshold1, threshold2, threshold3, threshold4
+
+    update_cleanmask('image_dirin_MSMF.app.restored.fits.mask.fits','image_dirin_MSMF.app.restored.fits.noisemap.fits','image_dirin_MSMF.app.restored.fits.mask.fits_deeper1',threshold2)
+    ddf_image('image_dirin_MSMF_deeper1',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits_deeper1',cleanmode='MSMF',threshold=5*threshold2,majorcycles=10,robust=o['robust'],reuse_psf=True,use_dicomodel=True,previous_image='image_dirin_MSMF')
+    make_mask('image_dirin_MSMF_deeper1.app.restored.fits',o['msmf'])
+    
+    update_cleanmask('image_dirin_MSMF_deeper1.app.restored.fits.mask.fits','image_dirin_MSMF_deeper1.app.restored.fits.noisemap.fits','image_dirin_MSMF.app.restored.fits.mask.fits_deeper2',threshold3)
+    ddf_image('image_dirin_MSMF_deeper2',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits_deeper2',cleanmode='MSMF',threshold=5*threshold3,majorcycles=10,robust=o['robust'],reuse_psf=True,use_dicomodel=True,previous_image='image_dirin_MSMF_deeper1')
+    make_mask('image_dirin_MSMF_deeper2.app.restored.fits',o['msmf'])
+    
+    update_cleanmask('image_dirin_MSMF_deeper2.app.restored.fits.mask.fits','image_dirin_MSMF_deeper2.app.restored.fits.noisemap.fits','image_dirin_MSMF.app.restored.fits.mask.fits_deeper3',threshold4)
+    ddf_image('image_dirin_MSMF_deeper3',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits_deeper3',cleanmode='MSMF',threshold=5*threshold4,majorcycles=10,robust=o['robust'],reuse_psf=True,use_dicomodel=True,previous_image='image_dirin_MSMF_deeper2')
+    make_mask('image_dirin_MSMF_deeper3.app.restored.fits',o['ga'])
+  
+    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],previous_image='image_dirin_MSMF',reuse_psf=True,peakfactor=0.05)
     make_mask('image_dirin_GAm.app.restored.fits',o['ga'])
 
     # Calibrate off the model
