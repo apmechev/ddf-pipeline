@@ -192,8 +192,9 @@ if __name__=='__main__':
     update_cleanmask('image_dirin_MSMF_deeper2.app.restored.fits.mask.fits','image_dirin_MSMF_deeper2.app.restored.fits.noisemap.fits','image_dirin_MSMF.app.restored.fits.mask.fits_deeper3',threshold4)
     ddf_image('image_dirin_MSMF_deeper3',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits_deeper3',cleanmode='MSMF',threshold=5*threshold4,majorcycles=10,robust=o['robust'],reuse_psf=True,use_dicomodel=True,previous_image='image_dirin_MSMF_deeper2')
     make_mask('image_dirin_MSMF_deeper3.app.restored.fits',o['ga'])
-  
-    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],previous_image='image_dirin_MSMF',reuse_psf=True,peakfactor=0.05)
+
+    # Not sure how to make it reuse dirty from the image_dirin_MSMF_deeper3 as presently it is reusing it from image_dirin_MSMF (e.g. the same as image_dirin_MSMF_deeper1.dirty.fits)
+    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],previous_image='image_dirin_MSMF',reuse_psf=True,reuse_dirty=True,peakfactor=0.05)
     make_mask('image_dirin_GAm.app.restored.fits',o['ga'])
 
     # Calibrate off the model
