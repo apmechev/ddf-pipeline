@@ -193,7 +193,7 @@ if __name__=='__main__':
     ddf_image('image_dirin_MSMF_deeper3',o['mslist'],cleanmask='image_dirin_MSMF.app.restored.fits.mask.fits_deeper3',cleanmode='MSMF',threshold=5*threshold4,majorcycles=10,robust=o['robust'],reuse_psf=True,use_dicomodel=True,previous_image='image_dirin_MSMF_deeper2')
     make_mask('image_dirin_MSMF_deeper3.app.restored.fits',o['ga'])
 
-    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],previous_image='image_dirin_MSMF_deeper3',reuse_psf=True,reuse_dirty=True,peakfactor=0.05)
+    ddf_image('image_dirin_GAm',o['mslist'],cleanmask='image_dirin_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='GA',majorcycles=4,robust=o['robust'],peakfactor=0.05)
     make_mask('image_dirin_GAm.app.restored.fits',o['ga'])
 
     # Calibrate off the model
