@@ -5,14 +5,10 @@
 
 import os,sys
 import os.path
-from auxcodes import run,find_imagenoise,warn,die
+from auxcodes import run,warn,die
 import pyrap.tables as pt
 import numpy as np
 from lofar import bdsm
-from make_cube import make_cube
-from make_fitting_product import make_catalogue
-import fitting_factors
-import find_outliers
 from scipy.interpolate import InterpolatedUnivariateSpline
 from pipeline import ddf_image, make_mask
 
@@ -22,15 +18,28 @@ def logfilename(s):
     else:
         return None
 
-def run_bootstrap(oa):
-    global o
-    o=oa
+def run_bootstrap(o):
     
     if o['mslist'] is None:
         die('MS list must be specified')
 
     if o['logging'] is not None and not os.path.isdir(o['logging']):
         os.mkdir(o['logging'])
+
+    # check the data supplied
+    if o['frequencies'] is None or o['catalogues'] is None:
+        die('Frequencies and catalogues options must be specified')
+
+    cl=len(o['catalogues'])
+    if o['names'] is None:
+        o['names']=[os.path.basename(x).replace('.fits','') for x in o['catalogues']]
+    if o['radii'] is None:
+        o['radii']=[10]*cl
+    if o['groups'] is None:
+        o['groups']=range(cl)
+    if (len(o['frequencies'])!=cl or len(o['radii'])!=cl or
+        len(o['names'])!=cl or len(o['groups'])!=cl):
+        die('Names, groups, radii and frequencies entries must be the same length as the catalogue list')
 
     low_robust=-0.25
     low_uvrange=[0.1,25.0]
@@ -59,22 +68,24 @@ def run_bootstrap(oa):
     # we can use this for each of the bands. We use the
     # lowest-frequency dataset.
 
-    ddf_image('image_low_initial_MSMF',mslist[0],cleanmode='MSMF',ddsols='killms_p1',applysols='P',threshold=5e-3,majorcyles=3,robust=low_robust,uvrange=low_uvrange,beamsize=20)
-    make_mask('image_low_initial_MSMF.app.restored.fits',20)
+    ddf_image('image_low_initial_MSMF',mslist[0],cleanmode='MSMF',ddsols='killms_p1',applysols='P',threshold=5e-3,majorcycles=3,robust=low_robust,uvrange=low_uvrange,beamsize=20,imsize=o['bsimsize'],cellsize=o['bscell'],options=o,colname=o['colname'])
+    make_mask('image_low_initial_MSMF.app.restored.fits',20,options=o)
 
     # now loop over the MSs to make the images
     for i,ms in enumerate(mslist):
-        imroot='image_low_%i_GA' % i
-        ddf_image(imroot,ms,cleanmask='image_low_initial_MSMF.restored.fits.mask.fits',cleanmode='GA',ddsols='killms_p1',applysols='P',majorcyles=3,robust=low_robust,uvrange=low_uvrange,beamsize=20)
-        make_mask(imroot+'.app.restored.fits',15)
-        ddf_image(imroot+'m',ms,cleanmask=imroot+'.app.restored.fits.mask.fits',previous_image=imroot,reuse_psf=True,use_dicomodel=True,majorcycles=2,cleanmode='GA',ddsols='killms_p1',applysols='P',majorcyles=3,robust=low_robust,uvrange=low_uvrange,beamsize=20,saveimages='H')
+        imroot='image_low_%i_SSD' % i
+        ddf_image(imroot,ms,cleanmask='image_low_initial_MSMF.app.restored.fits.mask.fits',cleanmode='SSD',ddsols='killms_p1',applysols='P',majorcycles=3,robust=low_robust,uvrange=low_uvrange,beamsize=20,imsize=o['bsimsize'],cellsize=o['bscell'],options=o,colname=o['colname'])
+        make_mask(imroot+'.app.restored.fits',15,options=o)
+        ddf_image(imroot+'m',ms,cleanmask=imroot+'.app.restored.fits.mask.fits',previous_image=imroot,reuse_psf=True,use_dicomodel=True,majorcycles=2,cleanmode='SSD',ddsols='killms_p1',applysols='P',robust=low_robust,uvrange=low_uvrange,beamsize=20,saveimages='H',imsize=o['bsimsize'],cellsize=o['bscell'],dirty_from_resid=True,options=o,colname=o['colname'])
+
+    from make_cube import make_cube
 
     #make the cube
     if os.path.isfile('cube.fits'):
         warn('Cube file exists, skipping cube assembly')
     else:
         warn('Making the cube')
-        make_cube('cube.fits',['image_low_%i_GAm.int.restored.fits' % i for i in range(len(mslist))],freqs)
+        make_cube('cube.fits',['image_low_%i_SSDm.int.restored.fits' % i for i in range(len(mslist))],freqs)
     if os.path.isfile('cube.pybdsm.srl'):
         warn('Source list exists, skipping source extraction')
     else:
@@ -83,6 +94,10 @@ def run_bootstrap(oa):
         # Write out in ASCII to work round bug in pybdsm
         img.write_catalog(catalog_type='srl',format='ascii',incl_chan='true')
         img.export_image(img_type='rms',img_format='fits')
+
+    from make_fitting_product import make_catalogue
+    import fitting_factors
+    import find_outliers
 
     # generate the fitting product
     if os.path.isfile('crossmatch-1.fits'):
@@ -98,17 +113,14 @@ def run_bootstrap(oa):
         ra*=180.0/np.pi
         dec*=180.0/np.pi
 
-        # currently VLSS and WENSS are hard-wired in: this should change...
-
-        cats=[['/stri-data/mjh/bootstrap/VLSS.fits','VLSS',40.0],
-              ['/stri-data/mjh/bootstrap/wenss.fits','WENSS',10.0]]
+        cats=zip(o['catalogues'],o['names'],o['groups'],o['radii'])
         make_catalogue('cube.pybdsm.srl',ra,dec,2.5,cats)
     
     freqlist=open('frequencies.txt','w')
-    freqlist.write('74e6 VLSS_flux VLSS_e_flux False\n')
+    for n,f in zip(o['names'],o['frequencies']):
+        freqlist.write('%f %s_flux %s_e_flux False\n' % (f,n,n))
     for i,f in enumerate(freqs):
         freqlist.write('%f Total_flux_ch%i E_Total_flux_ch%i True\n' % (f,i+1,i+1))
-    freqlist.write('326e6 WENSS_flux WENSS_e_flux False\n')
     freqlist.close()
 
     # Now call the fitting code
@@ -160,10 +172,10 @@ def run_bootstrap(oa):
                 factor=spl(frq)
                 print frq,factor
                 t=pt.table(ms,readonly=False)
-                desc=t.getcoldesc('CORRECTED_DATA')
+                desc=t.getcoldesc(o['colname'])
                 desc['name']='SCALED_DATA'
                 t.addcols(desc)
-                d=t.getcol('CORRECTED_DATA')
+                d=t.getcol(o['colname'])
                 d*=factor
                 t.putcol('SCALED_DATA',d)
                 t.close()
