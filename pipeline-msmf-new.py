@@ -334,7 +334,7 @@ if __name__=='__main__':
     #make_mask('image_ampphase1m.app.restored.fits',o['ampphase'],use_tgss=True)
 
     threshold1 = 20e-3
-    ddf_image('image_ampphase1_MSMF',o['mslist'],cleanmask='image_phase1_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='MSMF',threshold=threshold1,majorcycles=10,robust=o['robust'],ddsols='killms_ap1',applysols='P',colname=colname,use_dicomodel=True,dicomodel_base='image_phase1_MSMF_deeper3')
+    ddf_image('image_ampphase1_MSMF',o['mslist'],cleanmask='image_phase1_MSMF_deeper3.app.restored.fits.mask.fits',cleanmode='MSMF',threshold=threshold1,majorcycles=10,robust=o['robust'],ddsols='killms_ap1',applysols='AP',colname=colname,use_dicomodel=True,dicomodel_base='image_phase1_MSMF_deeper3')
 
     make_mask('image_ampphase1_MSMF.app.restored.fits',o['ga'])
 
@@ -379,7 +379,7 @@ if __name__=='__main__':
         # Check imaging weights -- needed before DDF
         check_imaging_weight(o['full_mslist'])
         # single AP cal of full dataset and final image. Is this enough?
-        killms_data('image_ampphase1_MSMF_deeper3',o['full_mslist'],'killms_f_ap1',colname=colname,clusterfile='image_dirin_MSMF_deeper3.NodesCat.npy',stagedir=o['stagedir'],dicomodel='image_ampphase1_MSMF_deeper3_masked.DicoModel')
+        killms_data('image_ampphase1_MSMF_deeper3',o['full_mslist'],'killms_f_ap1',colname=colname,clusterfile='image_dirin_MSMF.NodesCat.npy',stagedir=o['stagedir'],dicomodel='image_ampphase1_MSMF_deeper3_masked.DicoModel')
         #killms_data('image_ampphase1m',o['full_mslist'],'killms_f_ap1',colname=colname,clusterfile='image_dirin_SSDm.NodesCat.npy',stagedir=o['stagedir'],dicomodel='image_ampphase1m_masked.DicoModel')
 
         
