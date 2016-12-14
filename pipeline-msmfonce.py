@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
 # Routine is to use killms/ddf to self-calibrate the data
+import pyfits
+import numpy as np
 import os,sys
 import os.path
 from auxcodes import report,run,find_imagenoise,warn,die
@@ -120,7 +122,7 @@ def make_mask(imagename,thresh,verbose=False,use_tgss=False,options=None):
     if options is None:
         options=o # attempt to get global
     fname=imagename+'.mask.fits'
-    runcommand = "MakeMask.py --RestoredIm=%s --Th=%s --Box=50,2"%(imagename,thresh)
+    runcommand = "MakeMask.py --RestoredIm=%s --Th=%s --Box=50,2 --OutNameNoiseMap=%s.noisemap"%(imagename,thresh,imagename)
     if options['restart'] and os.path.isfile(fname):
         warn('File '+fname+' already exists, skipping MakeMask step')
         if verbose:
