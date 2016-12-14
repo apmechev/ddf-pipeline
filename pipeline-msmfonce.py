@@ -224,7 +224,7 @@ if __name__=='__main__':
     check_imaging_weight(o['mslist'])
 
     # Image full bandwidth to create a model
-    threshold1 = 20e-3
+    threshold1 = o['msmf_depth']
     ddf_image('image_dirin_MSMF',o['mslist'],cleanmode='MSMF',threshold=threshold1,majorcycles=10,robust=o['robust'])
     make_mask('image_dirin_MSMF.app.restored.fits',o['ga'])
 
